@@ -1,0 +1,48 @@
+SET addresses [localhost:8086]
+
+CREATE DATABASE stress
+
+ALTER RETENTION POLICY default ON stress REPLICATION 1 DURATION 1h DEFAULT
+
+USE stress.default
+
+go INSERT mockCpu
+cpu,
+host=[us-west|us-east|eu-north],server_id=[s rand(7) 1000]
+busy=[i rand(1000) 100],free=[f rand(10) 0]
+10K 10s jitter
+
+SET queryConcurrency 2
+
+SET queryInterval 100ms
+
+go QUERY mockCpu
+SELECT mean(%f) FROM %m WHERE %t
+10000
+
+QUERY
+SELECT count(free) FROM cpu
+100
+
+SELECT count(free) FROM cpu
+
+SET concurrency 15
+
+go INSERT tmplInsert
+[s rand(8) 5],
+[s rand(5) 5]=[b],tag2=y
+[s rand(3) 20]=[i rand(1000) 100]
+1M 1s
+
+INSERT
+cpu,
+host=server-[i inc(0) 1000],location=us-west
+value=[i inc(100) 100]
+100 30s
+
+INSERT
+mem,
+host=server-1,location=us-west
+value=[i inc(0) 1000000]
+100K 1s
+
