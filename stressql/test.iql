@@ -40,6 +40,8 @@ host=server-[i inc(0) 1000],location=us-west
 value=[i inc(100) 100]
 100 30s
 
+EXEC some_script.sh addresses
+
 INSERT
 mem,
 host=server-1,location=us-west
