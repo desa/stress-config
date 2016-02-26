@@ -34,7 +34,7 @@ go INSERT tmplInsert
 [s rand(3) 20]=[i rand(1000) 100]
 1M 1s
 
-INSERT
+INSERT hello
 cpu,
 host=server-[i inc(0) 1000],location=us-west
 value=[i inc(100) 100]
@@ -48,3 +48,4 @@ host=server-1,location=us-west
 value=[i inc(0) 1000000]
 100K 1s
 
+WAIT

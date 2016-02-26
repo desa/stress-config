@@ -50,6 +50,12 @@ func (s *Scanner) read() rune {
 
 func (s *Scanner) unread() { _ = s.r.UnreadRune() }
 
+func (s *Scanner) peek() rune {
+	ch := s.read()
+	s.unread()
+	return ch
+}
+
 func (s *Scanner) Scan() (tok Token, lit string) {
 	ch := s.read()
 
@@ -91,8 +97,7 @@ func (s *Scanner) scanStatements() (tok Token, lit string) {
 	for {
 		if ch := s.read(); ch == eof {
 			break
-		} else if isNewline(ch) && isNewline(s.read()) {
-			s.unread()
+		} else if isNewline(ch) && isNewline(s.peek()) {
 			s.unread()
 			break
 		} else if isNewline(ch) {

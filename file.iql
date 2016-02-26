@@ -21,7 +21,7 @@ SELECT mean(%f) FROM %m WHERE %t
 10000
 
 QUERY
-SEmECT count(free) FROM cpu
+SELECT count(free) FROM cpu
 100
 
 SELECT count(free) FROM cpu

@@ -42,6 +42,10 @@ const (
 	QUERY
 	INSERT
 	GO
+	WAIT
+	STR
+	INT
+	FLOAT
 	keywordEnd
 )
 
@@ -70,6 +74,10 @@ var tokens = [...]string{
 	QUERY:  "QUERY",
 	INSERT: "INSERT",
 	GO:     "GO",
+	WAIT:   "WAIT",
+	INT:    "INT",
+	FLOAT:  "FLOAT",
+	STR:    "STRING",
 }
 
 var eof = rune(1)
@@ -201,8 +209,16 @@ func (s *Scanner) scanIdent() (tok Token, lit string) {
 		return QUERY, buf.String()
 	case "INSERT":
 		return INSERT, buf.String()
+	case "WAIT":
+		return WAIT, buf.String()
 	case "GO":
 		return GO, buf.String()
+	case "STR":
+		return STR, buf.String()
+	case "FLOAT":
+		return FLOAT, buf.String()
+	case "INT":
+		return INT, buf.String()
 	}
 
 	return IDENT, buf.String()
@@ -237,24 +253,262 @@ func (s *Scanner) scanNumber() (tok Token, lit string) {
 	return NUMBER, buf.String()
 }
 
-func main() {
+/////////////////////////////////
+// PARSER ///////////////////////
+/////////////////////////////////
 
-	f, err := os.Open("test.iql")
-	check(err)
+type InsertStatement struct {
+	Name           string
+	TemplateString string
+	Templates      []*Template
+	Timestamp      *Timestamp
+}
 
-	s := NewScanner(f)
+type Function struct {
+	Type     string
+	Fn       string
+	Argument string
+	Count    string
+}
+
+type Timestamp struct {
+	Count    string
+	Duration string
+	Jitter   bool
+}
+
+type Template struct {
+	Tags      []string
+	Functions []*Function
+}
+
+type Parser struct {
+	s   *Scanner
+	buf struct {
+		tok Token
+		lit string
+		n   int
+	}
+}
+
+func NewParser(r io.Reader) *Parser {
+	return &Parser{s: NewScanner(r)}
+}
+
+func (p *Parser) Parse() (*InsertStatement, error) {
+	stmt := &InsertStatement{}
+
+	if tok, lit := p.scanIgnoreWhitespace(); tok != INSERT {
+		return nil, fmt.Errorf("found %q, expected INSERT", lit)
+	}
+
+	tok, lit := p.scanIgnoreWhitespace()
+	if tok != IDENT {
+		return nil, fmt.Errorf("found %q, expected IDENT", lit)
+	}
+
+	stmt.Name = lit
+
+	tok, lit = p.scan()
+	if tok != WS {
+		return nil, fmt.Errorf("found %q, expected WS", lit)
+	}
+
+	var prev Token
+
 	for {
-		t, l := s.Scan()
-		fmt.Printf("%v ", tokens[t])
-		if strings.ContainsRune(l, '\n') {
-			fmt.Println()
+		tok, lit = p.scan()
+
+		if tok == WS {
+			if prev == COMMA {
+				continue
+			}
+			stmt.TemplateString += " "
+		} else if tok == LBRACKET {
+
+			stmt.TemplateString += "%v"
+
+			// parse template should return a template type
+			expr, err := p.ParseTemplate()
+			// Add template to parsed select statement
+			stmt.Templates = append(stmt.Templates, expr)
+
+			if err != nil {
+				fmt.Println(err)
+				return nil, fmt.Errorf("TEMPLATE ERROR")
+			}
+		} else if tok == NUMBER {
+			stmt.TemplateString += "%v"
+			p.unscan()
+			ts, err := p.ParseTimestamp()
+			if err != nil {
+				return nil, fmt.Errorf("TIME ERROR")
+			}
+			stmt.Timestamp = ts
+			break
+		} else if tok != IDENT && tok != COMMA {
+			return nil, fmt.Errorf("found %q, expected IDENT or COMMA", lit)
+		} else {
+			prev = tok
+			stmt.TemplateString += lit
 		}
-		//fmt.Printf("%v ", tokens[t])
-		//fmt.Printf("%v ", tokens[t])
-		if t == EOF {
+
+		// CURRENTLY DOESNT ADD SPACE BETWEEN FIELDS AND TAGS NEED TO FIX THAT
+
+	}
+
+	return stmt, nil
+	// Pull stuff til right bracket
+
+	//if tok, _ := p.scanIgnoreWhitespace(); tok !=
+}
+
+func (p *Parser) ParseTemplate() (*Template, error) {
+
+	tmplt := &Template{}
+	//	if tok, lit := p.scanIgnoreWhitespace(); tok != LBRACKET {
+	//		return nil, fmt.Errorf("found %q, expected LBRACKET", lit)
+	//	}
+
+	for {
+		tok, lit := p.scanIgnoreWhitespace()
+		if tok == IDENT {
+			tmplt.Tags = append(tmplt.Tags, lit)
+		} else if tok == INT || tok == FLOAT || tok == STR {
+			p.unscan()
+			fn, err := p.ParseFunction()
+			if err != nil {
+				fmt.Println(err)
+				return nil, fmt.Errorf("FUNCTION ERROR")
+			}
+
+			tmplt.Functions = append(tmplt.Functions, fn)
+
+		} else if tok == RBRACKET {
 			break
 		}
 	}
+
+	return tmplt, nil
+}
+
+func (p *Parser) ParseFunction() (*Function, error) {
+
+	fn := &Function{}
+	//	if tok, lit := p.scanIgnoreWhitespace(); tok != LBRACKET {
+	//		return nil, fmt.Errorf("found %q, expected LBRACKET", lit)
+	//	}
+	tok, lit := p.scanIgnoreWhitespace()
+	fn.Type = lit
+
+	tok, lit = p.scanIgnoreWhitespace()
+	fn.Fn = lit
+
+	tok, lit = p.scanIgnoreWhitespace()
+	if tok != LPAREN {
+		return nil, fmt.Errorf("LPAREN ERROR")
+	}
+
+	tok, lit = p.scanIgnoreWhitespace()
+	if tok != NUMBER {
+		return nil, fmt.Errorf("NUMBER ERROR")
+	}
+	fn.Argument = lit
+
+	tok, _ = p.scanIgnoreWhitespace()
+	if tok != RPAREN {
+		return nil, fmt.Errorf("RPAREN ERROR")
+	}
+
+	tok, lit = p.scanIgnoreWhitespace()
+	if tok != NUMBER {
+		return nil, fmt.Errorf("NUMBER ERROR")
+	}
+	fn.Count = lit
+
+	return fn, nil
+}
+
+func (p *Parser) ParseTimestamp() (*Timestamp, error) {
+
+	ts := &Timestamp{}
+	//	if tok, lit := p.scanIgnoreWhitespace(); tok != LBRACKET {
+	//		return nil, fmt.Errorf("found %q, expected LBRACKET", lit)
+	//	}
+	tok, lit := p.scanIgnoreWhitespace()
+	if tok != NUMBER {
+		return nil, fmt.Errorf("NUMBER ERROR")
+	}
+	ts.Count = lit
+
+	tok, lit = p.scanIgnoreWhitespace()
+	if tok != DURATIONVAL {
+		return nil, fmt.Errorf("DURATION ERROR")
+	}
+	ts.Duration = lit
+
+	return ts, nil
+}
+
+func (p *Parser) scan() (tok Token, lit string) {
+	// If we have a token on the buffer, then return it.
+	if p.buf.n != 0 {
+		p.buf.n = 0
+		return p.buf.tok, p.buf.lit
+	}
+
+	// Otherwise read the next token from the scanner.
+	tok, lit = p.s.Scan()
+
+	// Save it to the buffer in case we unscan later.
+	p.buf.tok, p.buf.lit = tok, lit
+
+	return
+}
+
+// scanIgnoreWhitespace scans the next non-whitespace token.
+func (p *Parser) scanIgnoreWhitespace() (tok Token, lit string) {
+	tok, lit = p.scan()
+	if tok == WS {
+		tok, lit = p.scan()
+	}
+	return
+}
+
+// unscan pushes the previously read token back onto the buffer.
+func (p *Parser) unscan() { p.buf.n = 1 }
+
+func main() {
+
+	f, err := os.Open("other_test.iql")
+	check(err)
+
+	p := NewParser(f)
+	s, err := p.Parse()
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("%#v\n\n", s)
+	fmt.Printf("%#v\n\n", s.TemplateString)
+	for _, tm := range s.Templates {
+		fmt.Printf("%#v\n\n", tm)
+		for _, fns := range tm.Functions {
+			fmt.Printf("%#v\n\n", fns)
+		}
+	}
+	//s := NewScanner(f)
+	//for {
+	//	t, l := s.Scan()
+	//	fmt.Printf("%v ", tokens[t])
+	//	if strings.ContainsRune(l, '\n') {
+	//		fmt.Println()
+	//	}
+	//	//fmt.Printf("%v ", tokens[t])
+	//	//fmt.Printf("%v ", tokens[t])
+	//	if t == EOF {
+	//		break
+	//	}
+	//}
 
 	f.Close()
 
