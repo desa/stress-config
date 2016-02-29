@@ -1,4 +1,4 @@
-SET addresses [localhost:8086]
+# SET addresses [localhost:8086]
 
 CREATE DATABASE stress
 
@@ -19,7 +19,7 @@ SET queryInterval 100ms
 
 go QUERY mockCpu
 SELECT mean(%f) FROM %m WHERE %t
-10000
+DO 10000
 
 QUERY
 SELECT count(free) FROM cpu

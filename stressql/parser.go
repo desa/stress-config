@@ -349,6 +349,33 @@ func NewParser(r io.Reader) *Parser {
 	return &Parser{s: NewScanner(r)}
 }
 
+func (p *Parser) Parse() (Statement, error) {
+	tok, lit := p.scanIgnoreWhitespace()
+
+	switch tok {
+	case QUERY:
+		p.unscan()
+		return p.ParseQueryStatement()
+	case INSERT:
+		p.unscan()
+		return p.ParseInsertStatement()
+	case EXEC:
+		p.unscan()
+		return p.ParseExecStatement()
+	case SET:
+		p.unscan()
+		return p.ParseSetStatement()
+	case GO:
+		p.unscan()
+		return p.ParseGoStatement()
+	case WAIT:
+		p.unscan()
+		return p.ParseWaitStatement()
+	}
+
+	return nil, fmt.Errorf("found %q, unknown token", lit)
+}
+
 func (p *Parser) ParseQueryStatement() (*QueryStatement, error) {
 	stmt := &QueryStatement{}
 	if tok, lit := p.scanIgnoreWhitespace(); tok != QUERY {
@@ -383,7 +410,7 @@ func (p *Parser) ParseQueryStatement() (*QueryStatement, error) {
 
 }
 
-func (p *Parser) ParseInsertStatment() (*InsertStatement, error) {
+func (p *Parser) ParseInsertStatement() (*InsertStatement, error) {
 	stmt := &InsertStatement{}
 
 	if tok, lit := p.scanIgnoreWhitespace(); tok != INSERT {
@@ -558,7 +585,7 @@ func (p *Parser) ParseGoStatement() (*GoStatement, error) {
 		body, err = p.ParseQueryStatement()
 	case INSERT:
 		p.unscan()
-		body, err = p.ParseInsertStatment()
+		body, err = p.ParseInsertStatement()
 	case EXEC:
 		p.unscan()
 		body, err = p.ParseExecStatement()
@@ -663,7 +690,7 @@ func (p *Parser) unscan() { p.buf.n = 1 }
 func main() {
 
 	//f, err := os.Open("other_test.iql")
-	f, err := os.Open("set.iql")
+	f, err := os.Open("other_test.iql")
 	check(err)
 
 	p := NewParser(f)
@@ -671,7 +698,8 @@ func main() {
 	//s, err := p.ParseGoStatement()
 	//s, err := p.ParseExecStatement()
 	//s, err := p.ParseWaitStatement()
-	s, err := p.ParseSetStatement()
+	//s, err := p.ParseSetStatement()
+	s, err := p.Parse()
 	if err != nil {
 		fmt.Println(err)
 	}
