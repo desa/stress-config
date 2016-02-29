@@ -1,13 +1,15 @@
-package main
+package mdstress
 
 import (
 	"bufio"
 	"bytes"
-	"fmt"
+	//"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/influxdata/influxdb/influxql"
+	"github.com/mjdesa/stress_parser/stressql"
 )
 
 // Token represents a lexical token.
@@ -111,25 +113,86 @@ func (s *Scanner) scanStatements() (tok Token, lit string) {
 	return STATEMENT, buf.String()
 }
 
-func main() {
+//func main() {
+//	seq := []stressql.Statement{}
+//
+//	f, err := os.Open("stressql/test.iql")
+//	check(err)
+//
+//	s := NewScanner(f)
+//	//fmt.Printf("%#v\n", s)
+//	for {
+//		t, l := s.Scan()
+//		//fmt.Printf("%v %#v\n", t, l)
+//		if t == EOF {
+//			break
+//		}
+//		_, err := influxql.ParseStatement(l)
+//		if err == nil {
+//			//fmt.Println(state)
+//			seq = append(seq, &stressql.InfluxqlStatement{Value: l})
+//		} else if t == BREAK {
+//			continue
+//		} else {
+//			f := strings.NewReader(l)
+//			p := stressql.NewParser(f)
+//			s, err := p.Parse()
+//			if err != nil {
+//				panic(err)
+//			}
+//			seq = append(seq, s)
+//
+//		}
+//	}
+//
+//	fmt.Println(seq)
+//	for _, step := range seq {
+//		fmt.Printf("%#v\n", step)
+//	}
+//
+//	f.Close()
+//
+//}
 
-	f, err := os.Open("file.iql")
+func ParseCommands(file string) ([]stressql.Statement, error) {
+	seq := []stressql.Statement{}
+
+	f, err := os.Open(file)
 	check(err)
 
 	s := NewScanner(f)
-	fmt.Printf("%#v\n", s)
-	for i := 0; i < 100; i++ {
+	//fmt.Printf("%#v\n", s)
+	for {
 		t, l := s.Scan()
-		fmt.Printf("%v %#v\n", t, l)
+		//fmt.Printf("%v %#v\n", t, l)
 		if t == EOF {
 			break
 		}
-		state, err := influxql.ParseStatement(l)
+		_, err := influxql.ParseStatement(l)
 		if err == nil {
-			fmt.Println(state)
+			//fmt.Println(state)
+			seq = append(seq, &stressql.InfluxqlStatement{Value: l})
+		} else if t == BREAK {
+			continue
+		} else {
+			f := strings.NewReader(l)
+			p := stressql.NewParser(f)
+			s, err := p.Parse()
+			if err != nil {
+				return nil, err
+			}
+			seq = append(seq, s)
+
 		}
 	}
 
+	//fmt.Println(seq)
+	//for _, step := range seq {
+	//	fmt.Printf("%#v\n", step)
+	//}
+
 	f.Close()
+
+	return seq, nil
 
 }

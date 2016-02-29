@@ -1,3 +1,5 @@
+#SET addresses [localhost:8086]
+
 CREATE DATABASE stress
 
 ALTER RETENTION POLICY default ON stress REPLICATION 1 DURATION 1h DEFAULT
@@ -6,7 +8,7 @@ SET database stress
 
 SET retentionPolicy default
 
-INSERT mockCpu
+go INSERT mockCpu
 cpu,
 host=[us-west|us-east|eu-north],server_id=[str rand(7) 1000]
 busy=[int rand(1000) 100],free=[float rand(10) 0]
@@ -20,7 +22,7 @@ go QUERY mockCpu
 SELECT mean(%f) FROM %m WHERE %t
 DO 10000
 
-QUERY basicCount
+QUERY
 SELECT count(free) FROM cpu
 DO 100
 

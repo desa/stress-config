@@ -1,4 +1,4 @@
-package main
+package stressql
 
 import (
 	"bufio"
@@ -269,6 +269,13 @@ type Statement interface {
 	node()
 	Exec()
 }
+
+type InfluxqlStatement struct {
+	Value string
+}
+
+func (i *InfluxqlStatement) node() {}
+func (i *InfluxqlStatement) Exec() {}
 
 type InsertStatement struct {
 	Name           string
