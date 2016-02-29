@@ -1,0 +1,3 @@
+go QUERY someName
+SELECT count(%f) FROM %v
+DO 100

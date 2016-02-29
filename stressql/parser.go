@@ -42,10 +42,12 @@ const (
 	QUERY
 	INSERT
 	GO
+	DO
 	WAIT
 	STR
 	INT
 	FLOAT
+	EXEC
 	keywordEnd
 )
 
@@ -73,6 +75,8 @@ var tokens = [...]string{
 	USE:    "USE",
 	QUERY:  "QUERY",
 	INSERT: "INSERT",
+	EXEC:   "EXEC",
+	DO:     "DO",
 	GO:     "GO",
 	WAIT:   "WAIT",
 	INT:    "INT",
@@ -209,10 +213,14 @@ func (s *Scanner) scanIdent() (tok Token, lit string) {
 		return QUERY, buf.String()
 	case "INSERT":
 		return INSERT, buf.String()
+	case "EXEC":
+		return EXEC, buf.String()
 	case "WAIT":
 		return WAIT, buf.String()
 	case "GO":
 		return GO, buf.String()
+	case "DO":
+		return DO, buf.String()
 	case "STR":
 		return STR, buf.String()
 	case "FLOAT":
@@ -257,12 +265,20 @@ func (s *Scanner) scanNumber() (tok Token, lit string) {
 // PARSER ///////////////////////
 /////////////////////////////////
 
+type Statement interface {
+	node()
+	Exec()
+}
+
 type InsertStatement struct {
 	Name           string
 	TemplateString string
 	Templates      []*Template
 	Timestamp      *Timestamp
 }
+
+func (i *InsertStatement) node() {}
+func (i *InsertStatement) Exec() {}
 
 type Function struct {
 	Type     string
@@ -282,6 +298,33 @@ type Template struct {
 	Functions []*Function
 }
 
+type QueryStatement struct {
+	Name           string
+	TemplateString string
+	Args           []string
+	Count          string
+}
+
+func (i *QueryStatement) node() {}
+func (i *QueryStatement) Exec() {}
+
+type ExecStatement struct {
+	Script string
+	Args   []string
+}
+
+func (i *ExecStatement) node() {}
+func (i *ExecStatement) Exec() {}
+
+type WaitStatement struct{}
+
+func (i *WaitStatement) node() {}
+func (i *WaitStatement) Exec() {}
+
+type GoStatement struct {
+	Statement
+}
+
 type Parser struct {
 	s   *Scanner
 	buf struct {
@@ -295,7 +338,41 @@ func NewParser(r io.Reader) *Parser {
 	return &Parser{s: NewScanner(r)}
 }
 
-func (p *Parser) Parse() (*InsertStatement, error) {
+func (p *Parser) ParseQueryStatement() (*QueryStatement, error) {
+	stmt := &QueryStatement{}
+	if tok, lit := p.scanIgnoreWhitespace(); tok != QUERY {
+		return nil, fmt.Errorf("found %q, expected QUERY", lit)
+	}
+
+	tok, lit := p.scanIgnoreWhitespace()
+	if tok != IDENT {
+		return nil, fmt.Errorf("found %q, expected IDENT", lit)
+	}
+
+	for {
+		tok, lit := p.scan()
+		if tok == TEMPLATEVAR {
+			stmt.TemplateString += "%v"
+			stmt.Args = append(stmt.Args, lit)
+		} else if tok == DO {
+			tok, lit := p.scanIgnoreWhitespace()
+			if tok != NUMBER {
+				return nil, fmt.Errorf("found %q, expected NUMBER", lit)
+			}
+			stmt.Count = lit
+			break
+		} else if tok == WS && lit == "\n" {
+			continue
+		} else {
+			stmt.TemplateString += lit
+		}
+	}
+
+	return stmt, nil
+
+}
+
+func (p *Parser) ParseInsertStatment() (*InsertStatement, error) {
 	stmt := &InsertStatement{}
 
 	if tok, lit := p.scanIgnoreWhitespace(); tok != INSERT {
@@ -353,8 +430,6 @@ func (p *Parser) Parse() (*InsertStatement, error) {
 			stmt.TemplateString += lit
 		}
 
-		// CURRENTLY DOESNT ADD SPACE BETWEEN FIELDS AND TAGS NEED TO FIX THAT
-
 	}
 
 	return stmt, nil
@@ -390,6 +465,76 @@ func (p *Parser) ParseTemplate() (*Template, error) {
 	}
 
 	return tmplt, nil
+}
+
+func (p *Parser) ParseExecStatement() (*ExecStatement, error) {
+	// NEEDS TO PARSE ACTUAL PATH TO SCRIPT CURRENTLY ONLY DOES
+	// IDENT SCRIPT NAMES
+
+	stmt := &ExecStatement{}
+
+	if tok, lit := p.scanIgnoreWhitespace(); tok != EXEC {
+		return nil, fmt.Errorf("found %q, expected EXEC", lit)
+	}
+
+	tok, lit := p.scanIgnoreWhitespace()
+	if tok != IDENT {
+		return nil, fmt.Errorf("found %q, expected IDENT", lit)
+	}
+
+	stmt.Script = lit
+
+	return stmt, nil
+}
+
+func (p *Parser) ParseWaitStatement() (*WaitStatement, error) {
+	// NEEDS TO PARSE ACTUAL PATH TO SCRIPT CURRENTLY ONLY DOES
+	// IDENT SCRIPT NAMES
+
+	stmt := &WaitStatement{}
+
+	if tok, lit := p.scanIgnoreWhitespace(); tok != WAIT {
+		return nil, fmt.Errorf("found %q, expected WAIT", lit)
+	}
+
+	return stmt, nil
+}
+
+func (p *Parser) ParseGoStatement() (*GoStatement, error) {
+
+	stmt := &GoStatement{}
+	//	if tok, lit := p.scanIgnoreWhitespace(); tok != LBRACKET {
+	//		return nil, fmt.Errorf("found %q, expected LBRACKET", lit)
+	//	}
+
+	if tok, lit := p.scanIgnoreWhitespace(); tok != GO {
+		return nil, fmt.Errorf("found %q, expected GO", lit)
+	}
+
+	var body Statement
+	var err error
+
+	tok, _ := p.scanIgnoreWhitespace()
+	switch tok {
+	case QUERY:
+		p.unscan()
+		body, err = p.ParseQueryStatement()
+	case INSERT:
+		p.unscan()
+		body, err = p.ParseInsertStatment()
+	case EXEC:
+		p.unscan()
+		body, err = p.ParseExecStatement()
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("found %q", err)
+	}
+
+	stmt.Statement = body
+
+	return stmt, nil
+
 }
 
 func (p *Parser) ParseFunction() (*Function, error) {
@@ -480,22 +625,26 @@ func (p *Parser) unscan() { p.buf.n = 1 }
 
 func main() {
 
-	f, err := os.Open("other_test.iql")
+	//f, err := os.Open("other_test.iql")
+	f, err := os.Open("wait.iql")
 	check(err)
 
 	p := NewParser(f)
-	s, err := p.Parse()
+	//s, err := p.ParseQueryStatement()
+	//s, err := p.ParseGoStatement()
+	//s, err := p.ParseExecStatement()
+	s, err := p.ParseWaitStatement()
 	if err != nil {
 		fmt.Println(err)
 	}
 	fmt.Printf("%#v\n\n", s)
-	fmt.Printf("%#v\n\n", s.TemplateString)
-	for _, tm := range s.Templates {
-		fmt.Printf("%#v\n\n", tm)
-		for _, fns := range tm.Functions {
-			fmt.Printf("%#v\n\n", fns)
-		}
-	}
+	//fmt.Printf("%#v\n\n", s.TemplateString)
+	//for _, tm := range s.Templates {
+	//	fmt.Printf("%#v\n\n", tm)
+	//	for _, fns := range tm.Functions {
+	//		fmt.Printf("%#v\n\n", fns)
+	//	}
+	//}
 	//s := NewScanner(f)
 	//for {
 	//	t, l := s.Scan()

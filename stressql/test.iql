@@ -22,7 +22,7 @@ SELECT mean(%f) FROM %m WHERE %t
 
 QUERY
 SELECT count(free) FROM cpu
-100
+DO 100
 
 SELECT count(free) FROM cpu
 
@@ -40,7 +40,7 @@ host=server-[i inc(0) 1000],location=us-west
 value=[i inc(100) 100]
 100 30s
 
-EXEC some_script.sh addresses
+EXEC some_script
 
 INSERT
 mem,
