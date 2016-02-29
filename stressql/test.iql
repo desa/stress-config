@@ -4,7 +4,8 @@ CREATE DATABASE stress
 
 ALTER RETENTION POLICY default ON stress REPLICATION 1 DURATION 1h DEFAULT
 
-USE stress.default
+SET database stress
+SET retentionPolicy default
 
 go INSERT mockCpu
 cpu,

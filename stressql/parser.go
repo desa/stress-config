@@ -321,9 +321,20 @@ type WaitStatement struct{}
 func (i *WaitStatement) node() {}
 func (i *WaitStatement) Exec() {}
 
+type SetStatement struct {
+	Var   string
+	Value string
+}
+
+func (i *SetStatement) node() {}
+func (i *SetStatement) Exec() {}
+
 type GoStatement struct {
 	Statement
 }
+
+func (i *GoStatement) node() {}
+func (i *GoStatement) Exec() {}
 
 type Parser struct {
 	s   *Scanner
@@ -487,6 +498,32 @@ func (p *Parser) ParseExecStatement() (*ExecStatement, error) {
 	return stmt, nil
 }
 
+func (p *Parser) ParseSetStatement() (*SetStatement, error) {
+	// NEEDS TO PARSE ALL TYPES OF VALUES
+
+	stmt := &SetStatement{}
+
+	if tok, lit := p.scanIgnoreWhitespace(); tok != SET {
+		return nil, fmt.Errorf("found %q, expected SET", lit)
+	}
+
+	tok, lit := p.scanIgnoreWhitespace()
+	if tok != IDENT {
+		return nil, fmt.Errorf("found %q, expected IDENT", lit)
+	}
+
+	stmt.Var = lit
+
+	tok, lit = p.scanIgnoreWhitespace()
+	if tok != IDENT && tok != NUMBER && tok != DURATIONVAL {
+		return nil, fmt.Errorf("found %q, expected IDENT or NUMBER or DURATION", lit)
+	}
+
+	stmt.Value = lit
+
+	return stmt, nil
+}
+
 func (p *Parser) ParseWaitStatement() (*WaitStatement, error) {
 	// NEEDS TO PARSE ACTUAL PATH TO SCRIPT CURRENTLY ONLY DOES
 	// IDENT SCRIPT NAMES
@@ -626,14 +663,15 @@ func (p *Parser) unscan() { p.buf.n = 1 }
 func main() {
 
 	//f, err := os.Open("other_test.iql")
-	f, err := os.Open("wait.iql")
+	f, err := os.Open("set.iql")
 	check(err)
 
 	p := NewParser(f)
 	//s, err := p.ParseQueryStatement()
 	//s, err := p.ParseGoStatement()
 	//s, err := p.ParseExecStatement()
-	s, err := p.ParseWaitStatement()
+	//s, err := p.ParseWaitStatement()
+	s, err := p.ParseSetStatement()
 	if err != nil {
 		fmt.Println(err)
 	}
